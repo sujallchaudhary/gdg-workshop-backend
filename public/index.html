@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Game Generator</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      :root {
+        --bg: #0f0f13;
+        --surface: #1a1a24;
+        --surface-2: #23232f;
+        --border: #2e2e3e;
+        --accent: #7c3aed;
+        --accent-hover: #6d28d9;
+        --accent-glow: rgba(124, 58, 237, 0.35);
+        --text: #e8e8f0;
+        --text-muted: #888899;
+        --green: #22c55e;
+        --yellow: #eab308;
+        --red: #ef4444;
+        --blue: #3b82f6;
+        --radius: 12px;
+      }
+
+      body {
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+      }
+
+      /* ── HEADER ── */
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px 32px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+      }
+      .logo {
+        font-size: 1.3rem;
+        font-weight: 700;
+        background: linear-gradient(135deg, #a78bfa, #7c3aed);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        letter-spacing: -0.5px;
+      }
+      .logo span { font-weight: 300; color: var(--text-muted); -webkit-text-fill-color: var(--text-muted); }
+
+      /* ── BUTTONS ── */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 9px 20px;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 600;
+        transition: all 0.15s;
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: #fff;
+      }
+      .btn-primary:hover { background: var(--accent-hover); box-shadow: 0 0 16px var(--accent-glow); }
+      .btn-ghost {
+        background: transparent;
+        color: var(--text-muted);
+        border: 1px solid var(--border);
+      }
+      .btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+      .btn-sm { padding: 6px 14px; font-size: 0.82rem; }
+
+      /* ── MAIN ── */
+      main { padding: 36px 32px; max-width: 1280px; margin: 0 auto; }
+
+      .section-heading {
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 20px;
+      }
+
+      /* ── GAME GRID ── */
+      #game-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 22px;
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        transition: border-color 0.15s, transform 0.15s;
+      }
+      .card:hover { border-color: var(--accent); transform: translateY(-3px); }
+      .card.playable { cursor: pointer; }
+
+      .card-thumb {
+        width: 100%;
+        aspect-ratio: 16/9;
+        background: var(--surface-2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        position: relative;
+      }
+      /* Transparent overlay so clicks pass through to the card, not into the iframe */
+      .card-thumb::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+      }
+      .card-thumb img { width: 100%; height: 100%; object-fit: cover; }
+      .card-thumb .thumb-placeholder {
+        font-size: 3rem;
+        opacity: 0.2;
+      }
+      .card-thumb iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+      }
+
+      .card-body { padding: 16px; flex: 1; display: flex; flex-direction: column; gap: 8px; }
+      .card-title { font-size: 1rem; font-weight: 600; line-height: 1.3; }
+      .card-prompt {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      .card-footer {
+        padding: 12px 16px;
+        border-top: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      /* ── STATUS BADGE ── */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+      .badge::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+      .badge-completed  { background: rgba(34,197,94,.12);  color: var(--green); }
+      .badge-pending    { background: rgba(234,179,8,.12);  color: var(--yellow); }
+      .badge-processing { background: rgba(59,130,246,.12); color: var(--blue); }
+      .badge-failed     { background: rgba(239,68,68,.12);  color: var(--red); }
+
+      /* ── EMPTY / LOADING ── */
+      .empty-state {
+        grid-column: 1 / -1;
+        text-align: center;
+        padding: 80px 20px;
+        color: var(--text-muted);
+      }
+      .empty-state .icon { font-size: 3.5rem; margin-bottom: 12px; }
+      .empty-state p { font-size: 1rem; }
+
+      .spinner {
+        width: 36px; height: 36px;
+        border: 3px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin .7s linear infinite;
+        margin: 60px auto;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* ── MODAL BACKDROP ── */
+      .modal-backdrop {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,.75);
+        backdrop-filter: blur(4px);
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+      }
+      .modal-backdrop.open { opacity: 1; pointer-events: all; }
+
+      /* ── SUBMIT MODAL ── */
+      .modal-box {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 28px;
+        width: 100%;
+        max-width: 520px;
+        transform: translateY(12px);
+        transition: transform 0.2s;
+      }
+      .modal-backdrop.open .modal-box { transform: translateY(0); }
+
+      .modal-box h2 { font-size: 1.25rem; margin-bottom: 6px; }
+      .modal-box p  { color: var(--text-muted); font-size: 0.88rem; margin-bottom: 20px; }
+
+      textarea {
+        width: 100%;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        font-size: 0.92rem;
+        padding: 12px 14px;
+        resize: vertical;
+        min-height: 110px;
+        line-height: 1.5;
+        outline: none;
+        transition: border-color 0.15s;
+      }
+      textarea:focus { border-color: var(--accent); }
+
+      .model-select-wrap {
+        margin-top: 14px;
+      }
+      .model-select-wrap label {
+        display: block;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-bottom: 6px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .5px;
+      }
+      select {
+        width: 100%;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        font-size: 0.92rem;
+        padding: 10px 12px;
+        outline: none;
+        cursor: pointer;
+        transition: border-color 0.15s;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888899' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+        padding-right: 32px;
+      }
+      select:focus { border-color: var(--accent); }
+      select option { background: var(--surface-2); }
+
+      .badge-model {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        background: rgba(124,58,237,.15);
+        color: #a78bfa;
+        margin-left: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 140px;
+      }
+
+      .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+
+      /* ── TOAST ── */
+      #toast {
+        position: fixed;
+        bottom: 28px;
+        right: 28px;
+        z-index: 999;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .toast-item {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px 18px;
+        font-size: 0.88rem;
+        max-width: 320px;
+        animation: slideIn 0.25s ease;
+        box-shadow: 0 4px 20px rgba(0,0,0,.4);
+      }
+      .toast-item.success { border-left: 3px solid var(--green); }
+      .toast-item.error   { border-left: 3px solid var(--red); }
+      .toast-item.info    { border-left: 3px solid var(--blue); }
+      @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+
+      /* ── POLLING BANNER ── */
+      #polling-banner {
+        display: none;
+        background: rgba(59,130,246,.12);
+        border: 1px solid rgba(59,130,246,.25);
+        border-radius: 10px;
+        padding: 12px 18px;
+        margin-bottom: 28px;
+        font-size: 0.88rem;
+        color: var(--blue);
+        align-items: center;
+        gap: 12px;
+      }
+      #polling-banner.visible { display: flex; }
+      .mini-spinner {
+        width: 16px; height: 16px;
+        border: 2px solid rgba(59,130,246,.3);
+        border-top-color: var(--blue);
+        border-radius: 50%;
+        animation: spin .7s linear infinite;
+        flex-shrink: 0;
+      }
+
+      @media (max-width: 600px) {
+        header { padding: 14px 16px; }
+        main   { padding: 24px 16px; }
+      }
+    </style>
+  </head>
+  <body>
+
+    <!-- HEADER -->
+    <header>
+      <div class="logo">AI Game<span>Gen</span></div>
+      <button class="btn btn-primary" id="open-submit-btn">
+        ✦ Generate Game
+      </button>
+    </header>
+
+    <!-- MAIN -->
+    <main>
+      <div id="polling-banner">
+        <div class="mini-spinner"></div>
+        <span id="polling-text">Generating your game…</span>
+        <button class="btn btn-ghost btn-sm" id="cancel-poll-btn" style="margin-left:auto">Cancel</button>
+      </div>
+
+      <p class="section-heading">Games</p>
+      <div id="game-grid">
+        <div class="spinner" id="loading-spinner"></div>
+      </div>
+    </main>
+
+    <!-- SUBMIT MODAL -->
+    <div class="modal-backdrop" id="submit-modal">
+      <div class="modal-box">
+        <h2>Generate a New Game</h2>
+        <p>Describe the game you want to create. Be specific about mechanics, style, and theme.</p>
+        <textarea id="prompt-input" placeholder="e.g. A neon snake game where you eat glowing orbs to grow longer, with a dark background and particle effects on collision…"></textarea>        <div class="model-select-wrap">
+          <label for="model-select">Model</label>
+          <select id="model-select"><option value="">Loading models…</option></select>
+        </div>        <div class="modal-actions">
+          <button class="btn btn-ghost" id="cancel-submit-btn">Cancel</button>
+          <button class="btn btn-primary" id="submit-btn">Generate ✦</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOAST CONTAINER -->
+    <div id="toast"></div>
+
+    <script>
+      const API = '/api';
+      let pollInterval = null;
+
+      // ── Models ───────────────────────────────────────────────────
+
+      let availableModels = [];
+
+      async function loadModels() {
+        try {
+          const res = await fetch(`${API}/models`);
+          const { models } = await res.json();
+          availableModels = models;
+          const sel = document.getElementById('model-select');
+          sel.innerHTML = models.map(m =>
+            `<option value="${escapeAttr(m.id)}">${escapeHTML(m.label)}</option>`
+          ).join('');
+        } catch {
+          document.getElementById('model-select').innerHTML =
+            '<option value="">Failed to load models</option>';
+        }
+      }
+
+      function getModelLabel(modelId) {
+        const m = availableModels.find(x => x.id === modelId);
+        return m ? m.label : modelId;
+      }
+
+      // ── Utils ──────────────────────────────────────────────────────────────
+
+      function toast(msg, type = 'info', duration = 4000) {
+        const el = document.createElement('div');
+        el.className = `toast-item ${type}`;
+        el.textContent = msg;
+        document.getElementById('toast').appendChild(el);
+        setTimeout(() => el.remove(), duration);
+      }
+
+      function badgeHTML(status) {
+        return `<span class="badge badge-${status}">${status}</span>`;
+      }
+
+      function buildGameDoc(game) {
+        return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #000; }
+  ${game.css || ''}
+</style>
+</head>
+<body>
+${game.html || ''}
+<script>
+${game.js || ''}
+<\/script>
+</body>
+</html>`;
+      }
+
+      // ── Grid ───────────────────────────────────────────────────────────────
+
+      async function loadGames() {
+        const grid = document.getElementById('game-grid');
+        grid.innerHTML = '<div class="spinner"></div>';
+        try {
+          const res = await fetch(`${API}/games`);
+          if (!res.ok) throw new Error('Failed to fetch games');
+          const { games } = await res.json();
+          renderGrid(games);
+        } catch (e) {
+          grid.innerHTML = `<div class="empty-state"><div class="icon">⚠</div><p>${e.message}</p></div>`;
+        }
+      }
+
+      function renderGrid(games) {
+        const grid = document.getElementById('game-grid');
+        if (!games || games.length === 0) {
+          grid.innerHTML = `<div class="empty-state">
+            <div class="icon">🎮</div>
+            <p>No games yet. Generate your first one!</p>
+          </div>`;
+          return;
+        }
+        grid.innerHTML = '';
+        games.forEach(game => grid.appendChild(buildCard(game)));
+      }
+
+      function buildCard(game) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.dataset.taskId = game.taskId;
+
+        // Build thumb element separately to avoid HTML-attribute escaping issues
+        const thumb = document.createElement('div');
+        thumb.className = 'card-thumb';
+        if (game.thumbnail) {
+          const img = document.createElement('img');
+          img.src = game.thumbnail;
+          img.alt = 'thumbnail';
+          img.loading = 'lazy';
+          thumb.appendChild(img);
+        } else if (game.html) {
+          const previewFrame = document.createElement('iframe');
+          previewFrame.sandbox = 'allow-scripts';
+          previewFrame.tabIndex = -1;
+          previewFrame.srcdoc = buildGameDoc(game);  // set as property — no attribute escaping
+          thumb.appendChild(previewFrame);
+        } else {
+          thumb.innerHTML = '<div class="thumb-placeholder">🎮</div>';
+        }
+
+        const body = document.createElement('div');
+        body.className = 'card-body';
+        body.innerHTML = `
+          <div class="card-title">${escapeHTML(game.title || 'Untitled Game')}</div>
+          <div class="card-prompt">${escapeHTML(game.prompt)}</div>`;
+
+        const footer = document.createElement('div');
+        footer.className = 'card-footer';
+        footer.innerHTML = badgeHTML(game.status);
+
+        if (game.status === 'completed') {
+          const playBtn = document.createElement('button');
+          playBtn.className = 'btn btn-primary btn-sm';
+          playBtn.textContent = '▶ Play';
+          footer.appendChild(playBtn);
+
+          if (game.model) {
+            const modelBadge = document.createElement('span');
+            modelBadge.className = 'badge-model';
+            modelBadge.textContent = getModelLabel(game.model);
+            modelBadge.title = game.model;
+            footer.appendChild(modelBadge);
+          }
+
+          // Entire card is clickable for completed games
+          card.classList.add('playable');
+          card.addEventListener('click', () => openGame(game));
+        } else {
+          const msg = document.createElement('span');
+          msg.style.cssText = 'font-size:.78rem;color:var(--text-muted)';
+          msg.textContent = game.message || '';
+          footer.appendChild(msg);
+        }
+
+        card.appendChild(thumb);
+        card.appendChild(body);
+        card.appendChild(footer);
+        return card;
+      }
+
+      function escapeHTML(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function escapeAttr(str) {
+        return String(str).replace(/"/g, '&quot;');
+      }
+
+      // ── Play ───────────────────────────────────────────────────────────────
+
+      function openGame(game) {
+        window.open(`/play.html?taskId=${encodeURIComponent(game.taskId)}`, '_blank');
+      }
+
+      // ── Submit Modal ───────────────────────────────────────────────────────
+
+      document.getElementById('open-submit-btn').addEventListener('click', () => {
+        document.getElementById('submit-modal').classList.add('open');
+        document.getElementById('prompt-input').focus();
+      });
+
+      document.getElementById('cancel-submit-btn').addEventListener('click', closeSubmitModal);
+
+      document.getElementById('submit-modal').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeSubmitModal();
+      });
+
+      function closeSubmitModal() {
+        document.getElementById('submit-modal').classList.remove('open');
+      }
+
+      document.getElementById('submit-btn').addEventListener('click', async () => {
+        const prompt = document.getElementById('prompt-input').value.trim();
+        const model  = document.getElementById('model-select').value;
+        if (!prompt) { toast('Please enter a game description.', 'error'); return; }
+        if (!model)  { toast('Please select a model.', 'error'); return; }
+
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = true;
+        btn.textContent = 'Submitting…';
+
+        try {
+          const res = await fetch(`${API}/tasks`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt, model }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Submission failed');
+
+          closeSubmitModal();
+          document.getElementById('prompt-input').value = '';
+          const modelLabel = getModelLabel(model);
+          toast(`Task submitted! Generating with ${modelLabel}…`, 'info');
+          startPolling(data.taskId, modelLabel);
+        } catch (e) {
+          toast(e.message, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Generate ✦';
+        }
+      });
+
+      // ── Polling ────────────────────────────────────────────────────────────
+
+      function startPolling(taskId, modelLabel) {
+        stopPolling();
+        const banner = document.getElementById('polling-banner');
+        const text   = document.getElementById('polling-text');
+        banner.classList.add('visible');
+        text.textContent = `Generating with ${modelLabel || 'AI'}… (task: ${taskId})`;
+
+        pollInterval = setInterval(async () => {
+          try {
+            const res = await fetch(`${API}/tasks/${taskId}`);
+            if (!res.ok) { stopPolling(); toast('Could not fetch task status.', 'error'); return; }
+            const task = await res.json();
+
+            if (task.status === 'completed') {
+              stopPolling();
+              toast(`"${task.title || 'Your game'}" is ready!`, 'success');
+              await loadGames();
+            } else if (task.status === 'failed') {
+              stopPolling();
+              toast(`Generation failed: ${task.error || 'Unknown error'}`, 'error');
+            } else {
+              text.textContent = `Generating with ${modelLabel || 'AI'}… ${task.message ? '(' + task.message + ')' : ''}`;
+            }
+          } catch {
+            stopPolling();
+            toast('Lost connection to server.', 'error');
+          }
+        }, 2500);
+      }
+
+      function stopPolling() {
+        if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+        document.getElementById('polling-banner').classList.remove('visible');
+      }
+
+      document.getElementById('cancel-poll-btn').addEventListener('click', stopPolling);
+
+      // ── Init ───────────────────────────────────────────────────────────────
+
+      loadModels();
+      loadGames();
+    </script>
+  </body>
+</html>

@@ -4,14 +4,26 @@ const {
   generateGameCode,
   generateTitle,
   generateThumbnail,
+  iterateGameWithFeedback,
+  iterateGameAuto,
+  AVAILABLE_MODELS,
 } = require('../chains/gameChain');
 
-async function createTask(prompt) {
+const DEFAULT_MODEL = AVAILABLE_MODELS[0].id;
+
+function resolveModel(modelId) {
+  const found = AVAILABLE_MODELS.find((m) => m.id === modelId);
+  return found ? found.id : DEFAULT_MODEL;
+}
+
+async function createTask(prompt, modelId) {
   const taskId = uuidv4();
+  const model = resolveModel(modelId);
 
   const game = await Game.create({
     taskId,
     prompt,
+    model,
     status: 'pending',
     message: 'Task queued, waiting to start...',
   });
@@ -20,7 +32,7 @@ async function createTask(prompt) {
     console.error(`Task ${taskId} failed:`, err.message);
   });
 
-  return { taskId };
+  return { taskId, model };
 }
 
 async function processTask(game) {
@@ -30,7 +42,7 @@ async function processTask(game) {
     await game.save();
 
     const [gameCode, title] = await Promise.all([
-      generateGameCode(game.prompt),
+      generateGameCode(game.prompt, game.model),
       generateTitle(game.prompt),
     ]);
 
@@ -77,6 +89,7 @@ async function getTaskStatus(taskId) {
 
   if (game.status === 'completed') {
     result.title = game.title;
+    result.model = game.model;
     result.html = game.html;
     result.css = game.css;
     result.js = game.js;
@@ -93,14 +106,88 @@ async function getTaskStatus(taskId) {
 async function getAllGames() {
   const games = await Game.find(
     { status: 'completed' },
-    { title: 1, taskId: 1, thumbnail: 1, createdAt: 1, _id: 0 }
+    { title: 1, taskId: 1, status: 1, prompt: 1, model: 1, thumbnail: 1, html: 1, css: 1, js: 1, createdAt: 1, _id: 0 }
   ).sort({ createdAt: -1 });
 
   return games;
+}
+
+function getAvailableModels() {
+  return AVAILABLE_MODELS;
+}
+
+async function iterateWithFeedback(taskId, feedback, modelId) {
+  const game = await Game.findOne({ taskId, status: 'completed' });
+  if (!game) return null;
+
+  const model = resolveModel(modelId || game.model);
+
+  game.status = 'processing';
+  game.message = 'Iterating game with your feedback...';
+  await game.save();
+
+  try {
+    const updated = await iterateGameWithFeedback(
+      { html: game.html, css: game.css, js: game.js },
+      feedback,
+      model,
+    );
+
+    game.html = updated.html;
+    game.css = updated.css;
+    game.js = updated.js;
+    game.status = 'completed';
+    game.message = 'Game updated!';
+    game.error = '';
+    await game.save();
+
+    return { taskId, status: 'completed', message: game.message };
+  } catch (err) {
+    game.status = 'completed'; // keep old code playable
+    game.message = `Iteration failed: ${err.message}`;
+    await game.save();
+    throw err;
+  }
+}
+
+async function iterateAutomatic(taskId, modelId) {
+  const game = await Game.findOne({ taskId, status: 'completed' });
+  if (!game) return null;
+
+  const model = resolveModel(modelId || game.model);
+
+  game.status = 'processing';
+  game.message = 'Auto-reviewing and fixing game...';
+  await game.save();
+
+  try {
+    const updated = await iterateGameAuto(
+      { html: game.html, css: game.css, js: game.js },
+      model,
+    );
+
+    game.html = updated.html;
+    game.css = updated.css;
+    game.js = updated.js;
+    game.status = 'completed';
+    game.message = 'Game auto-fixed!';
+    game.error = '';
+    await game.save();
+
+    return { taskId, status: 'completed', message: game.message };
+  } catch (err) {
+    game.status = 'completed'; // keep old code playable
+    game.message = `Auto-iteration failed: ${err.message}`;
+    await game.save();
+    throw err;
+  }
 }
 
 module.exports = {
   createTask,
   getTaskStatus,
   getAllGames,
+  getAvailableModels,
+  iterateWithFeedback,
+  iterateAutomatic,
 };

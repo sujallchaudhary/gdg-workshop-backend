@@ -21,6 +21,7 @@
   "homepage": "https://github.com/sujallchaudhary/gdg-workshop-backend#readme",
   "dependencies": {
     "@langchain/core": "^1.1.32",
+    "@langchain/google-genai": "^2.1.25",
     "@langchain/openai": "^1.2.13",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
@@ -28,6 +29,7 @@
     "langchain": "^1.2.32",
     "mongoose": "^9.3.0",
     "openai": "^6.29.0",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "zod": "^4.3.6"
   }
 }

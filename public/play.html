@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Loading game…</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --bg: #0f0f13;
+        --surface: #1a1a24;
+        --border: #2e2e3e;
+        --accent: #7c3aed;
+        --text: #e8e8f0;
+        --text-muted: #888899;
+        --red: #ef4444;
+      }
+      html, body { height: 100%; }
+      body {
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      /* ── HEADER ── */
+      header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 12px 20px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+        z-index: 10;
+      }
+      .back-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 14px;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text-muted);
+        font-size: 0.88rem;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      .back-btn:hover { color: var(--text); border-color: var(--accent); }
+      #game-title {
+        font-size: 1rem;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+      }
+
+      /* ── GAME FRAME ── */
+      #frame-wrap {
+        flex: 1;
+        overflow: hidden;
+        position: relative;
+      }
+      #game-frame {
+        width: 100%;
+        height: 100%;
+        border: none;
+        display: block;
+      }
+
+      /* ── STATES ── */
+      #state-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        background: var(--bg);
+      }
+      #state-overlay.hidden { display: none; }
+      .spinner {
+        width: 44px; height: 44px;
+        border: 3px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin .7s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .error-icon { font-size: 2.5rem; }
+      #state-msg { color: var(--text-muted); font-size: 0.95rem; text-align: center; max-width: 360px; }
+    </style>
+  </head>
+  <body>
+
+    <header>
+      <a class="back-btn" href="/">&#8592; Back</a>
+      <div id="game-title">Loading…</div>
+    </header>
+
+    <div id="frame-wrap">
+      <!-- Game renders here -->
+      <iframe
+        id="game-frame"
+        sandbox="allow-scripts"
+        title="Game"
+      ></iframe>
+
+      <!-- Loading / error overlay -->
+      <div id="state-overlay">
+        <div class="spinner" id="spinner"></div>
+        <div id="state-msg">Loading game…</div>
+      </div>
+    </div>
+
+    <script>
+      const API = '/api';
+
+      function showError(msg) {
+        document.getElementById('spinner').style.display = 'none';
+        document.getElementById('state-msg').textContent = msg;
+        const overlay = document.getElementById('state-overlay');
+        overlay.insertAdjacentHTML('afterbegin', '<div class="error-icon">⚠️</div>');
+      }
+
+      function buildGameDoc(game) {
+        return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #000; }
+${game.css || ''}
+</style>
+</head>
+<body>
+${game.html || ''}
+<script>
+// Error overlay — catches syntax errors in the game script below
+window.onerror = function(msg, src, line, col) {
+  var d = document.createElement('div');
+  d.style.cssText = 'position:fixed;inset:0;background:#0f0f13;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:monospace;z-index:9999;padding:24px';
+  d.innerHTML = '<div style="font-size:2rem">\u26A0\uFE0F</div>'
+    + '<div style="color:#ef4444;font-size:1rem;font-weight:600">Game script error</div>'
+    + '<div style="color:#888;font-size:.85rem;text-align:center;max-width:480px">' + msg + (line ? ' (line ' + line + ')' : '') + '</div>';
+  document.body.appendChild(d);
+  return true; // suppress console error
+};
+<\/script>
+<script>
+${game.js || ''}
+<\/script>
+</body>
+</html>`;
+      }
+
+      async function init() {
+        const params = new URLSearchParams(window.location.search);
+        const taskId = params.get('taskId');
+
+        if (!taskId) {
+          showError('No taskId specified.');
+          return;
+        }
+
+        try {
+          const res = await fetch(`${API}/tasks/${taskId}`);
+          if (!res.ok) throw new Error(`Server returned ${res.status}`);
+          const game = await res.json();
+
+          if (game.status !== 'completed') {
+            showError(`Game is not ready yet (status: ${game.status}).`);
+            return;
+          }
+
+          if (!game.html) {
+            showError('No game content found.');
+            return;
+          }
+
+          // Update title
+          const title = game.title || 'Game';
+          document.title = title;
+          document.getElementById('game-title').textContent = title;
+
+          // Inject game into iframe
+          const frame = document.getElementById('game-frame');
+          frame.srcdoc = buildGameDoc(game);
+
+          // Hide overlay once iframe loads
+          frame.addEventListener('load', () => {
+            document.getElementById('state-overlay').classList.add('hidden');
+          }, { once: true });
+
+        } catch (e) {
+          showError(`Failed to load game: ${e.message}`);
+        }
+      }
+
+      init();
+    </script>
+  </body>
+</html>

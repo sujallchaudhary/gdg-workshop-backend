@@ -45,6 +45,10 @@ const gameSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    model: {
+      type: String,
+      default: '',
+    },
   },
   { timestamps: true }
 );
