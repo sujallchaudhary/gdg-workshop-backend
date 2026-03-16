@@ -38,7 +38,7 @@ async function generateGameCode(userPrompt) {
 
 async function generateTitle(userPrompt) {
   const response = await client.chat.completions.create({
-    model: 'zai-org/GLM-5',
+    model: 'meta-llama/Llama-3.3-70B-Instruct-fast',
     messages: [
       { role: 'system', content: titleExtractionPrompt },
       { role: 'user', content: userPrompt },
