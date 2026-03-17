@@ -12,6 +12,16 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.use((req, res, next) => {
+  const start = Date.now();
+  console.log(`[REQ] ${req.method} ${req.originalUrl}`);
+  if (Object.keys(req.body || {}).length) console.log('[REQ] Body:', JSON.stringify(req.body));
+  res.on('finish', () => {
+    console.log(`[RES] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - start}ms)`);
+  });
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use('/api', gameRoutes);

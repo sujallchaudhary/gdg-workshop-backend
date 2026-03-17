@@ -3,11 +3,13 @@ const gameService = require('../service/gameService');
 async function submitTask(req, res, next) {
   try {
     const { prompt, model } = req.body;
+    console.log(`[CTRL] submitTask -> prompt: "${prompt}", model: ${model || 'default'}`);
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
       return res.status(400).json({ error: 'A non-empty "prompt" field is required' });
     }
 
     const result = await gameService.createTask(prompt.trim(), model);
+    console.log(`[CTRL] submitTask -> created taskId: ${result.taskId}`);
     return res.status(201).json(result);
   } catch (err) {
     next(err);
@@ -17,6 +19,7 @@ async function submitTask(req, res, next) {
 async function getTaskStatus(req, res, next) {
   try {
     const { taskId } = req.params;
+    console.log(`[CTRL] getTaskStatus -> taskId: ${taskId}`);
     if (!taskId) {
       return res.status(400).json({ error: 'taskId parameter is required' });
     }
@@ -49,6 +52,7 @@ async function iterateWithFeedback(req, res, next) {
   try {
     const { taskId } = req.params;
     const { feedback, model } = req.body;
+    console.log(`[CTRL] iterateWithFeedback -> taskId: ${taskId}, model: ${model || 'default'}`);
     if (!taskId) {
       return res.status(400).json({ error: 'taskId parameter is required' });
     }
@@ -70,6 +74,7 @@ async function iterateAutomatic(req, res, next) {
   try {
     const { taskId } = req.params;
     const { model } = req.body;
+    console.log(`[CTRL] iterateAutomatic -> taskId: ${taskId}, model: ${model || 'default'}`);
     if (!taskId) {
       return res.status(400).json({ error: 'taskId parameter is required' });
     }

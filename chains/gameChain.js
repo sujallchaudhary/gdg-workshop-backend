@@ -5,7 +5,8 @@ const { ChatGoogleGenerativeAI } = require('@langchain/google-genai');
 const { ChatPromptTemplate } = require('@langchain/core/prompts');
 const nebiusClient = require('../llm/client');
 const {
-  gameGenerationPrompt,
+  plannerPrompt,
+  coderPrompt,
   promptRephrasePrompt,
   iterateWithFeedbackPrompt,
   autoIteratePrompt,
@@ -74,14 +75,19 @@ function getLlm(modelId, temperature = 0.7, maxTokens = 32768) {
   });
 }
 
-const gamePrompt = ChatPromptTemplate.fromMessages([
-  ['system', gameGenerationPrompt],
+const plannerChainPrompt = ChatPromptTemplate.fromMessages([
+  ['system', plannerPrompt],
   ['human', '{userPrompt}'],
 ]);
 
-const retryGamePrompt = ChatPromptTemplate.fromMessages([
-  ['system', gameGenerationPrompt],
-  ['human', '{userPrompt}'],
+const coderChainPrompt = ChatPromptTemplate.fromMessages([
+  ['system', coderPrompt],
+  ['human', 'Implement simple this game plan into a fully playable HTML5 Canvas browser game. Return the complete HTML, CSS, and JS.'],
+]);
+
+const retryCoderPrompt = ChatPromptTemplate.fromMessages([
+  ['system', coderPrompt],
+  ['human', 'Implement this game plan into a fully playable HTML5 Canvas browser game.'],
   ['assistant', '[previous attempt contained a JavaScript syntax error]'],
   ['human', 'Your previous response had a JavaScript syntax error: {retryError}\nPlease regenerate the game with valid, error-free JavaScript.'],
 ]);
@@ -107,58 +113,102 @@ const autoIterateChainPrompt = ChatPromptTemplate.fromMessages([
 ]);
 
 async function rephraseUserPrompt(userPrompt) {
+  console.log(`[CHAIN] rephraseUserPrompt -> rephrasing with Llama-3.3-70B...`);
   const llm = getLlm('meta-llama/Llama-3.3-70B-Instruct-fast', 0.7, 1024);
   const chain = rephrasePrompt.pipe(llm);
   const response = await chain.invoke({ userPrompt });
+  console.log(`[CHAIN] rephraseUserPrompt -> done`);
   return response.content.trim();
 }
 
-async function generateGameCode(userPrompt, modelId = 'zai-org/GLM-5', _retryError = null) {
-  const detailedPrompt = _retryError ? userPrompt : await rephraseUserPrompt(userPrompt);
-  console.log('Detailed game prompt:', detailedPrompt);
+async function planGame(userPrompt, modelId) {
+  console.log(`[PLANNER] planGame -> model: ${modelId}`);
+  console.log(`[PLANNER] planGame -> input prompt: "${userPrompt}"`);
+  const llm = getLlm(modelId, 0.7, 4096);
+  const chain = plannerChainPrompt.pipe(llm);
+  const response = await chain.invoke({ userPrompt });
+  const plan = response.content.trim();
+  console.log(`[PLANNER] planGame -> plan generated (${plan.length} chars):`);
+  console.log('--- GAME PLAN START ---');
+  console.log(plan);
+  console.log('--- GAME PLAN END ---');
+  return plan;
+}
 
+async function codeGame(gamePlan, modelId, retryError = null) {
+  console.log(`[CODER] codeGame -> model: ${modelId}, retry: ${!!retryError}`);
   const structuredLlm = getLlm(modelId).withStructuredOutput(GameOutputSchema);
 
-  const chain = _retryError
-    ? retryGamePrompt.pipe(structuredLlm)
-    : gamePrompt.pipe(structuredLlm);
+  const chain = retryError
+    ? retryCoderPrompt.pipe(structuredLlm)
+    : coderChainPrompt.pipe(structuredLlm);
 
-  const input = _retryError
-    ? { userPrompt: detailedPrompt, retryError: _retryError }
-    : { userPrompt: detailedPrompt };
+  const input = retryError
+    ? { gamePlan, retryError }
+    : { gamePlan };
 
+  console.log(`[CODER] codeGame -> calling LLM with structured output...`);
   const parsed = await chain.invoke(input);
+  console.log(`[CODER] codeGame -> response received (HTML: ${parsed.html.length} chars, CSS: ${parsed.css.length} chars, JS: ${parsed.js.length} chars)`);
+  return parsed;
+}
+
+async function generateGameCode(userPrompt, modelId = 'zai-org/GLM-5', _retryError = null) {
+  console.log(`[CHAIN] generateGameCode -> model: ${modelId}, retry: ${!!_retryError}`);
+
+  // Step 1: Rephrase the user prompt (skip on retry)
+  const detailedPrompt = _retryError ? userPrompt : await rephraseUserPrompt(userPrompt);
+  console.log('[CHAIN] generateGameCode -> detailed prompt:', detailedPrompt);
+
+  // Step 2: Planner agent — break down into game components (skip on retry, reuse plan)
+  let gamePlan;
+  if (_retryError) {
+    gamePlan = detailedPrompt; // on retry, detailedPrompt already contains the plan
+  } else {
+    gamePlan = await planGame(detailedPrompt, modelId);
+  }
+
+  // Step 3: Coder agent — implement the plan as HTML/CSS/JS
+  const parsed = await codeGame(gamePlan, modelId, _retryError);
+
+  // Step 4: Validate JS syntax
   try {
     new vm.Script(parsed.js);
+    console.log(`[CHAIN] generateGameCode -> JS syntax check PASSED`);
   } catch (syntaxErr) {
     if (_retryError) {
       throw new Error(`Generated JavaScript has syntax errors: ${syntaxErr.message}`);
     }
-    console.warn(`JS syntax error in generated code, retrying: ${syntaxErr.message}`);
-    return generateGameCode(userPrompt, modelId, syntaxErr.message);
+    console.warn(`[CHAIN] generateGameCode -> JS syntax error, retrying: ${syntaxErr.message}`);
+    return generateGameCode(gamePlan, modelId, syntaxErr.message);
   }
 
   return parsed;
 }
 
 async function generateTitle(userPrompt) {
+  console.log(`[CHAIN] generateTitle -> generating with Llama-3.3-70B...`);
   const llm = getLlm('meta-llama/Llama-3.3-70B-Instruct-fast', 0.7, 50);
   const chain = titlePrompt.pipe(llm);
   const response = await chain.invoke({ userPrompt });
+  console.log(`[CHAIN] generateTitle -> "${response.content.trim()}"`);
   return response.content.trim();
 }
 
 async function generateThumbnail(title) {
+  console.log(`[CHAIN] generateThumbnail -> generating for "${title}" with flux-dev...`);
   const prompt = thumbnailPrompt.replace('{title}', title);
   const response = await nebiusClient.images.generate({
     model: 'black-forest-labs/flux-dev',
     prompt,
   });
+  console.log(`[CHAIN] generateThumbnail -> done`);
 
   return response.data[0].url || response.data[0].b64_json || '';
 }
 
 async function iterateGameWithFeedback(currentGame, feedback, modelId = 'zai-org/GLM-5') {
+  console.log(`[CHAIN] iterateGameWithFeedback -> model: ${modelId}, feedback: "${feedback.substring(0, 100)}..."`);
   const structuredLlm = getLlm(modelId).withStructuredOutput(GameOutputSchema);
   const chain = feedbackIteratePrompt.pipe(structuredLlm);
 
@@ -168,11 +218,14 @@ async function iterateGameWithFeedback(currentGame, feedback, modelId = 'zai-org
     currentJs: currentGame.js,
     feedback,
   });
+  console.log(`[CHAIN] iterateGameWithFeedback -> response received, validating JS...`);
   new vm.Script(parsed.js);
+  console.log(`[CHAIN] iterateGameWithFeedback -> JS syntax check PASSED`);
   return parsed;
 }
 
 async function iterateGameAuto(currentGame, modelId = 'zai-org/GLM-5') {
+  console.log(`[CHAIN] iterateGameAuto -> model: ${modelId}`);
   const structuredLlm = getLlm(modelId).withStructuredOutput(GameOutputSchema);
   const chain = autoIterateChainPrompt.pipe(structuredLlm);
 
@@ -181,7 +234,9 @@ async function iterateGameAuto(currentGame, modelId = 'zai-org/GLM-5') {
     currentCss: currentGame.css,
     currentJs: currentGame.js,
   });
+  console.log(`[CHAIN] iterateGameAuto -> response received, validating JS...`);
   new vm.Script(parsed.js);
+  console.log(`[CHAIN] iterateGameAuto -> JS syntax check PASSED`);
   return parsed;
 }
 

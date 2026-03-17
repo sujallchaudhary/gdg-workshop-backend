@@ -19,6 +19,7 @@ function resolveModel(modelId) {
 async function createTask(prompt, modelId) {
   const taskId = uuidv4();
   const model = resolveModel(modelId);
+  console.log(`[SVC] createTask -> taskId: ${taskId}, model: ${model}, prompt: "${prompt}"`);
 
   const game = await Game.create({
     taskId,
@@ -27,9 +28,10 @@ async function createTask(prompt, modelId) {
     status: 'pending',
     message: 'Task queued, waiting to start...',
   });
+  console.log(`[SVC] createTask -> saved to DB, starting background processing...`);
 
   processTask(game).catch((err) => {
-    console.error(`Task ${taskId} failed:`, err.message);
+    console.error(`[SVC] Task ${taskId} failed:`, err.message);
   });
 
   return { taskId, model };
@@ -37,14 +39,19 @@ async function createTask(prompt, modelId) {
 
 async function processTask(game) {
   try {
+    console.log(`[SVC] processTask -> starting for taskId: ${game.taskId}`);
     game.status = 'processing';
     game.message = 'Generating game code and title...';
     await game.save();
 
+    console.log(`[SVC] processTask -> generating code + title in parallel...`);
+    const startTime = Date.now();
     const [gameCode, title] = await Promise.all([
       generateGameCode(game.prompt, game.model),
       generateTitle(game.prompt),
     ]);
+    console.log(`[SVC] processTask -> code + title generated in ${Date.now() - startTime}ms`);
+    console.log(`[SVC] processTask -> title: "${title}"`);
 
     game.html = gameCode.html;
     game.css = gameCode.css;
@@ -54,8 +61,10 @@ async function processTask(game) {
     game.message = 'Game ready! Generating thumbnail...';
     await game.save();
 
+    console.log(`[SVC] processTask -> generating thumbnail for "${title}"...`);
     generateThumbnail(title)
       .then(async (thumbnailUrl) => {
+        console.log(`[SVC] processTask -> thumbnail generated for taskId: ${game.taskId}`);
         game.thumbnail = thumbnailUrl;
         game.message = 'Game ready!';
         await game.save();
@@ -68,6 +77,7 @@ async function processTask(game) {
         });
       });
   } catch (err) {
+    console.error(`[SVC] processTask -> FAILED for taskId: ${game.taskId} -> ${err.message}`);
     game.status = 'failed';
     game.error = err.message;
     game.message = 'Game generation failed.';
@@ -117,10 +127,12 @@ function getAvailableModels() {
 }
 
 async function iterateWithFeedback(taskId, feedback, modelId) {
+  console.log(`[SVC] iterateWithFeedback -> taskId: ${taskId}`);
   const game = await Game.findOne({ taskId, status: 'completed' });
   if (!game) return null;
 
   const model = resolveModel(modelId || game.model);
+  console.log(`[SVC] iterateWithFeedback -> using model: ${model}`);
 
   game.status = 'processing';
   game.message = 'Iterating game with your feedback...';
@@ -151,10 +163,12 @@ async function iterateWithFeedback(taskId, feedback, modelId) {
 }
 
 async function iterateAutomatic(taskId, modelId) {
+  console.log(`[SVC] iterateAutomatic -> taskId: ${taskId}`);
   const game = await Game.findOne({ taskId, status: 'completed' });
   if (!game) return null;
 
   const model = resolveModel(modelId || game.model);
+  console.log(`[SVC] iterateAutomatic -> using model: ${model}`);
 
   game.status = 'processing';
   game.message = 'Auto-reviewing and fixing game...';
