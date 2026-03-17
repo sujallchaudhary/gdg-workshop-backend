@@ -49,6 +49,22 @@ const gameSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    gameDesign: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    pipelineLog: {
+      type: [mongoose.Schema.Types.Mixed],
+      default: [],
+    },
+    iterations: {
+      type: Number,
+      default: 0,
+    },
+    passed: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

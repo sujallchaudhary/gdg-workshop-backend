@@ -315,27 +315,70 @@
       .toast-item.info    { border-left: 3px solid var(--blue); }
       @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
 
-      /* ── POLLING BANNER ── */
-      #polling-banner {
+      /* ── PIPELINE TRACKER ── */
+      #pipeline-panel {
         display: none;
-        background: rgba(59,130,246,.12);
-        border: 1px solid rgba(59,130,246,.25);
-        border-radius: 10px;
-        padding: 12px 18px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
         margin-bottom: 28px;
-        font-size: 0.88rem;
-        color: var(--blue);
-        align-items: center;
-        gap: 12px;
+        overflow: hidden;
       }
-      #polling-banner.visible { display: flex; }
-      .mini-spinner {
-        width: 16px; height: 16px;
-        border: 2px solid rgba(59,130,246,.3);
-        border-top-color: var(--blue);
-        border-radius: 50%;
-        animation: spin .7s linear infinite;
-        flex-shrink: 0;
+      #pipeline-panel.visible { display: block; }
+
+      .pipeline-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+      }
+      .pipeline-header h3 { font-size: 0.95rem; font-weight: 600; }
+      .pipeline-header .close-btn {
+        background: none; border: none; color: var(--text-muted);
+        font-size: 1.2rem; cursor: pointer; padding: 4px 8px;
+      }
+      .pipeline-header .close-btn:hover { color: var(--text); }
+
+      .pipeline-steps { padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+
+      .step-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 10px 14px;
+        background: var(--surface-2);
+        border-radius: 8px;
+        border-left: 3px solid var(--border);
+        font-size: 0.85rem;
+        transition: border-color 0.2s;
+      }
+      .step-row.running  { border-left-color: var(--blue); }
+      .step-row.done     { border-left-color: var(--green); }
+      .step-row.passed   { border-left-color: var(--green); }
+      .step-row.failed   { border-left-color: var(--red); }
+      .step-row.error    { border-left-color: var(--red); }
+      .step-row.warning  { border-left-color: var(--yellow); }
+
+      .step-icon { font-size: 1rem; flex-shrink: 0; width: 22px; text-align: center; }
+      .step-body { flex: 1; }
+      .step-label { font-weight: 600; margin-bottom: 2px; }
+      .step-msg { color: var(--text-muted); font-size: 0.8rem; }
+      .step-errors {
+        margin-top: 6px; padding: 8px 10px;
+        background: rgba(239,68,68,.08);
+        border-radius: 6px; font-family: monospace;
+        font-size: 0.75rem; color: var(--red);
+        max-height: 120px; overflow-y: auto;
+        white-space: pre-wrap;
+      }
+      .step-data {
+        margin-top: 6px; padding: 8px 10px;
+        background: rgba(124,58,237,.06);
+        border-radius: 6px; font-family: monospace;
+        font-size: 0.75rem; color: var(--text-muted);
+        max-height: 200px; overflow-y: auto;
+        white-space: pre-wrap;
       }
 
       @media (max-width: 600px) {
@@ -356,10 +399,13 @@
 
     <!-- MAIN -->
     <main>
-      <div id="polling-banner">
-        <div class="mini-spinner"></div>
-        <span id="polling-text">Generating your game…</span>
-        <button class="btn btn-ghost btn-sm" id="cancel-poll-btn" style="margin-left:auto">Cancel</button>
+      <!-- Pipeline Tracker -->
+      <div id="pipeline-panel">
+        <div class="pipeline-header">
+          <h3 id="pipeline-title">Generating game...</h3>
+          <button class="close-btn" id="close-pipeline-btn">&times;</button>
+        </div>
+        <div class="pipeline-steps" id="pipeline-steps"></div>
       </div>
 
       <p class="section-heading">Games</p>
@@ -388,7 +434,21 @@
 
     <script>
       const API = '/api';
-      let pollInterval = null;
+      let currentEventSource = null;
+
+      const STEP_NAMES = {
+        1: 'Planner Agent',
+        2: 'Coder Agent',
+        3: 'Static Validator',
+        4: 'Sandbox Tester',
+        5: 'Debugger Agent',
+        6: 'Final Delivery',
+      };
+
+      const STEP_ICONS = {
+        running: '⏳', done: '✅', passed: '✅',
+        failed: '❌', error: '❌', warning: '⚠️',
+      };
 
       // ── Models ───────────────────────────────────────────────────
 
@@ -449,6 +509,18 @@ ${game.js || ''}
 </html>`;
       }
 
+      function escapeHTML(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function escapeAttr(str) {
+        return String(str).replace(/"/g, '&quot;');
+      }
+
       // ── Grid ───────────────────────────────────────────────────────────────
 
       async function loadGames() {
@@ -460,7 +532,7 @@ ${game.js || ''}
           const { games } = await res.json();
           renderGrid(games);
         } catch (e) {
-          grid.innerHTML = `<div class="empty-state"><div class="icon">⚠</div><p>${e.message}</p></div>`;
+          grid.innerHTML = `<div class="empty-state"><div class="icon">⚠</div><p>${escapeHTML(e.message)}</p></div>`;
         }
       }
 
@@ -482,7 +554,6 @@ ${game.js || ''}
         card.className = 'card';
         card.dataset.taskId = game.taskId;
 
-        // Build thumb element separately to avoid HTML-attribute escaping issues
         const thumb = document.createElement('div');
         thumb.className = 'card-thumb';
         if (game.thumbnail) {
@@ -495,7 +566,7 @@ ${game.js || ''}
           const previewFrame = document.createElement('iframe');
           previewFrame.sandbox = 'allow-scripts';
           previewFrame.tabIndex = -1;
-          previewFrame.srcdoc = buildGameDoc(game);  // set as property — no attribute escaping
+          previewFrame.srcdoc = buildGameDoc(game);
           thumb.appendChild(previewFrame);
         } else {
           thumb.innerHTML = '<div class="thumb-placeholder">🎮</div>';
@@ -525,32 +596,14 @@ ${game.js || ''}
             footer.appendChild(modelBadge);
           }
 
-          // Entire card is clickable for completed games
           card.classList.add('playable');
           card.addEventListener('click', () => openGame(game));
-        } else {
-          const msg = document.createElement('span');
-          msg.style.cssText = 'font-size:.78rem;color:var(--text-muted)';
-          msg.textContent = game.message || '';
-          footer.appendChild(msg);
         }
 
         card.appendChild(thumb);
         card.appendChild(body);
         card.appendChild(footer);
         return card;
-      }
-
-      function escapeHTML(str) {
-        return String(str)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;');
-      }
-
-      function escapeAttr(str) {
-        return String(str).replace(/"/g, '&quot;');
       }
 
       // ── Play ───────────────────────────────────────────────────────────────
@@ -598,8 +651,8 @@ ${game.js || ''}
           closeSubmitModal();
           document.getElementById('prompt-input').value = '';
           const modelLabel = getModelLabel(model);
-          toast(`Task submitted! Generating with ${modelLabel}…`, 'info');
-          startPolling(data.taskId, modelLabel);
+          toast(`Pipeline started with ${modelLabel}`, 'info');
+          startPipelineStream(data.taskId, modelLabel);
         } catch (e) {
           toast(e.message, 'error');
         } finally {
@@ -608,44 +661,117 @@ ${game.js || ''}
         }
       });
 
-      // ── Polling ────────────────────────────────────────────────────────────
+      // ── Pipeline SSE Stream ────────────────────────────────────────────────
 
-      function startPolling(taskId, modelLabel) {
-        stopPolling();
-        const banner = document.getElementById('polling-banner');
-        const text   = document.getElementById('polling-text');
-        banner.classList.add('visible');
-        text.textContent = `Generating with ${modelLabel || 'AI'}… (task: ${taskId})`;
+      function startPipelineStream(taskId, modelLabel) {
+        stopPipelineStream();
 
-        pollInterval = setInterval(async () => {
+        const panel = document.getElementById('pipeline-panel');
+        const steps = document.getElementById('pipeline-steps');
+        const title = document.getElementById('pipeline-title');
+
+        panel.classList.add('visible');
+        steps.innerHTML = '';
+        title.textContent = `Generating with ${modelLabel || 'AI'}...`;
+
+        const source = new EventSource(`${API}/tasks/${taskId}/stream`);
+        currentEventSource = source;
+
+        source.addEventListener('step', (e) => {
+          const data = JSON.parse(e.data);
+          updateStepRow(steps, data);
+        });
+
+        source.addEventListener('status', (e) => {
+          const data = JSON.parse(e.data);
+          title.textContent = data.message || 'Processing...';
+        });
+
+        source.addEventListener('complete', (e) => {
+          const data = JSON.parse(e.data);
+          title.textContent = data.message || 'Game ready!';
+          toast(`"${data.title || 'Your game'}" is ready!`, 'success');
+          stopPipelineStream();
+          loadGames();
+        });
+
+        source.addEventListener('error', (e) => {
+          // SSE 'error' can be an actual event from server or a connection error
           try {
-            const res = await fetch(`${API}/tasks/${taskId}`);
-            if (!res.ok) { stopPolling(); toast('Could not fetch task status.', 'error'); return; }
-            const task = await res.json();
-
-            if (task.status === 'completed') {
-              stopPolling();
-              toast(`"${task.title || 'Your game'}" is ready!`, 'success');
-              await loadGames();
-            } else if (task.status === 'failed') {
-              stopPolling();
-              toast(`Generation failed: ${task.error || 'Unknown error'}`, 'error');
-            } else {
-              text.textContent = `Generating with ${modelLabel || 'AI'}… ${task.message ? '(' + task.message + ')' : ''}`;
-            }
+            const data = JSON.parse(e.data);
+            title.textContent = `Failed: ${data.error}`;
+            toast(`Pipeline failed: ${data.error}`, 'error');
           } catch {
-            stopPolling();
-            toast('Lost connection to server.', 'error');
+            // Connection error, not a server event
+            if (source.readyState === EventSource.CLOSED) {
+              title.textContent = 'Connection lost';
+            }
           }
-        }, 2500);
+          stopPipelineStream();
+        });
+
+        source.addEventListener('thumbnail', () => {
+          loadGames(); // refresh grid to show thumbnail
+        });
+
+        source.onerror = () => {
+          // EventSource will auto-reconnect, but if the task is done, close it
+          if (source.readyState === EventSource.CLOSED) {
+            stopPipelineStream();
+          }
+        };
       }
 
-      function stopPolling() {
-        if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-        document.getElementById('polling-banner').classList.remove('visible');
+      function stopPipelineStream() {
+        if (currentEventSource) {
+          currentEventSource.close();
+          currentEventSource = null;
+        }
       }
 
-      document.getElementById('cancel-poll-btn').addEventListener('click', stopPolling);
+      function updateStepRow(container, data) {
+        const rowId = `step-${data.step}-${data.name}-${data.iteration || 0}`;
+        let row = document.getElementById(rowId);
+        const icon = STEP_ICONS[data.status] || '🔄';
+        const label = STEP_NAMES[data.step] || data.name;
+        const iterTag = data.iteration ? ` (iter ${data.iteration})` : '';
+
+        if (!row) {
+          row = document.createElement('div');
+          row.id = rowId;
+          row.className = `step-row ${data.status}`;
+          container.appendChild(row);
+          // Auto-scroll to bottom
+          container.scrollTop = container.scrollHeight;
+        } else {
+          row.className = `step-row ${data.status}`;
+        }
+
+        let html = `
+          <div class="step-icon">${icon}</div>
+          <div class="step-body">
+            <div class="step-label">${escapeHTML(label)}${iterTag}</div>
+            <div class="step-msg">${escapeHTML(data.message)}</div>`;
+
+        // Show errors if any
+        if (data.errors && data.errors.length > 0) {
+          const errorText = data.errors.map(e => `[${e.type}] ${e.message}`).join('\n');
+          html += `<div class="step-errors">${escapeHTML(errorText)}</div>`;
+        }
+
+        // Show game design data from planner
+        if (data.data && data.step === 1 && data.status === 'done') {
+          html += `<div class="step-data">${escapeHTML(JSON.stringify(data.data, null, 2))}</div>`;
+        }
+
+        html += `</div>`;
+        row.innerHTML = html;
+      }
+
+      document.getElementById('close-pipeline-btn').addEventListener('click', () => {
+        document.getElementById('pipeline-panel').classList.remove('visible');
+        stopPipelineStream();
+      });
 
       // ── Init ───────────────────────────────────────────────────────────────
 

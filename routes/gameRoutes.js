@@ -8,9 +8,11 @@ router.post('/tasks', gameController.submitTask);
 
 router.get('/tasks/:taskId', gameController.getTaskStatus);
 
+// SSE stream — real-time pipeline events
+router.get('/tasks/:taskId/stream', gameController.streamTask);
+
 router.get('/games', gameController.getAllGames);
 
 router.post('/tasks/:taskId/iterate', gameController.iterateWithFeedback);
-router.post('/tasks/:taskId/auto-iterate', gameController.iterateAutomatic);
 
 module.exports = router;

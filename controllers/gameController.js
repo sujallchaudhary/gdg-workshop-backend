@@ -32,6 +32,34 @@ async function getTaskStatus(req, res, next) {
   }
 }
 
+// SSE endpoint — streams pipeline events in real time
+function streamTask(req, res) {
+  const { taskId } = req.params;
+  if (!taskId) {
+    return res.status(400).json({ error: 'taskId parameter is required' });
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write('\n'); // flush headers
+
+  gameService.addListener(taskId, res);
+
+  // Send keepalive every 15s
+  const keepalive = setInterval(() => {
+    try { res.write(': keepalive\n\n'); } catch { clearInterval(keepalive); }
+  }, 15000);
+
+  req.on('close', () => {
+    clearInterval(keepalive);
+    gameService.removeListener(taskId, res);
+  });
+}
+
 async function getAllGames(req, res, next) {
   try {
     const games = await gameService.getAllGames();
@@ -66,29 +94,11 @@ async function iterateWithFeedback(req, res, next) {
   }
 }
 
-async function iterateAutomatic(req, res, next) {
-  try {
-    const { taskId } = req.params;
-    const { model } = req.body;
-    if (!taskId) {
-      return res.status(400).json({ error: 'taskId parameter is required' });
-    }
-
-    const result = await gameService.iterateAutomatic(taskId, model);
-    if (!result) {
-      return res.status(404).json({ error: 'Completed game not found for this taskId' });
-    }
-    return res.status(200).json(result);
-  } catch (err) {
-    next(err);
-  }
-}
-
 module.exports = {
   submitTask,
   getTaskStatus,
+  streamTask,
   getAllGames,
   getModels,
   iterateWithFeedback,
-  iterateAutomatic,
 };
