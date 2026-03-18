@@ -32,9 +32,8 @@ app.get('/health', (_req, res) => {
 
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 3000;
-const MONGODB_URI =
-  process.env.MONGODB_URI || 'mongodb://localhost:27017/gdg-game-generator';
+const PORT = process.env.PORT;
+const MONGODB_URI =process.env.MONGODB_URI;
 
 async function start() {
   try {

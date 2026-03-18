@@ -20,12 +20,6 @@ const GameOutputSchema = z.object({
   js: z.string().describe('Full JavaScript content for the game logic'),
 });
 
-const AZURE_MODELS = new Set([
-  'claude-opus-4-6',
-  'claude-sonnet-4-5',
-  'gpt-4o',
-]);
-
 const GEMINI_MODELS = new Set([
   'gemini-2.5-flash',
   'gemini-2.5-pro',
@@ -59,18 +53,13 @@ function getLlm(modelId, temperature = 0.7, maxTokens = 32768) {
     });
   }
 
-  const isAzure = AZURE_MODELS.has(modelId);
   return new ChatOpenAI({
     model: modelId,
     temperature,
     maxTokens,
     configuration: {
-      baseURL: isAzure
-        ? process.env.AZURE_AI_FOUNDRY_ENDPOINT
-        : 'https://api.tokenfactory.nebius.com/v1/',
-      apiKey: isAzure
-        ? process.env.AZURE_AI_FOUNDRY_KEY
-        : process.env.NEBIUS_API_KEY,
+      baseURL: 'https://api.tokenfactory.nebius.com/v1/',
+      apiKey: process.env.NEBIUS_API_KEY,
     },
   });
 }
@@ -153,7 +142,7 @@ async function codeGame(gamePlan, modelId, retryError = null) {
   return parsed;
 }
 
-async function generateGameCode(userPrompt, modelId = 'zai-org/GLM-5', _retryError = null) {
+async function generateGameCode(userPrompt, modelId = 'moonshotai/Kimi-K2.5', _retryError = null) {
   console.log(`[CHAIN] generateGameCode -> model: ${modelId}, retry: ${!!_retryError}`);
 
   // Step 1: Rephrase the user prompt (skip on retry)
@@ -207,7 +196,7 @@ async function generateThumbnail(title) {
   return response.data[0].url || response.data[0].b64_json || '';
 }
 
-async function iterateGameWithFeedback(currentGame, feedback, modelId = 'zai-org/GLM-5') {
+async function iterateGameWithFeedback(currentGame, feedback, modelId = 'moonshotai/Kimi-K2.5') {
   console.log(`[CHAIN] iterateGameWithFeedback -> model: ${modelId}, feedback: "${feedback.substring(0, 100)}..."`);
   const structuredLlm = getLlm(modelId).withStructuredOutput(GameOutputSchema);
   const chain = feedbackIteratePrompt.pipe(structuredLlm);
@@ -224,7 +213,7 @@ async function iterateGameWithFeedback(currentGame, feedback, modelId = 'zai-org
   return parsed;
 }
 
-async function iterateGameAuto(currentGame, modelId = 'zai-org/GLM-5') {
+async function iterateGameAuto(currentGame, modelId='moonshotai/Kimi-K2.5') {
   console.log(`[CHAIN] iterateGameAuto -> model: ${modelId}`);
   const structuredLlm = getLlm(modelId).withStructuredOutput(GameOutputSchema);
   const chain = autoIterateChainPrompt.pipe(structuredLlm);
