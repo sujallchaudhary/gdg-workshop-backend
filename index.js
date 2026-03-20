@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const mongoose = require('mongoose');
+const connectDB = require('./database/connection');
 const gameRoutes = require('./routes/gameRoutes');
 const errorHandler = require('./middlewares/errorHandler');
 
@@ -33,12 +33,10 @@ app.get('/health', (_req, res) => {
 app.use(errorHandler);
 
 const PORT = process.env.PORT;
-const MONGODB_URI =process.env.MONGODB_URI;
 
 async function start() {
   try {
-    await mongoose.connect(MONGODB_URI);
-    console.log('Connected to MongoDB');
+    await connectDB();
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
