@@ -12,6 +12,7 @@ const {
   autoIteratePrompt,
   titleExtractionPrompt,
   thumbnailPrompt,
+  streamingGamePrompt,
 } = require('../prompt/gamePrompts');
 
 const GameOutputSchema = z.object({
@@ -229,11 +230,38 @@ async function iterateGameAuto(currentGame, modelId='moonshotai/Kimi-K2.5') {
   return parsed;
 }
 
+const streamingChainPrompt = ChatPromptTemplate.fromMessages([
+  ['system', streamingGamePrompt],
+  ['human', '{userPrompt}'],
+]);
+
+async function* streamGameGeneration(userPrompt, modelId) {
+  console.log(`[CHAIN] streamGameGeneration -> model: ${modelId}`);
+  const llm = getLlm(modelId, 0.7, 32768);
+  const chain = streamingChainPrompt.pipe(llm);
+  const stream = await chain.stream({ userPrompt });
+
+  for await (const chunk of stream) {
+    const thinkingContent = chunk.additional_kwargs?.reasoning_content;
+    if (thinkingContent) {
+      yield { type: 'thinking', content: thinkingContent };
+    }
+
+    if (chunk.content) {
+      yield {
+        type: 'content',
+        content: typeof chunk.content === 'string' ? chunk.content : JSON.stringify(chunk.content),
+      };
+    }
+  }
+}
+
 module.exports = {
   generateGameCode,
   generateTitle,
   generateThumbnail,
   iterateGameWithFeedback,
   iterateGameAuto,
+  streamGameGeneration,
   AVAILABLE_MODELS,
 };

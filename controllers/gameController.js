@@ -89,6 +89,43 @@ async function iterateAutomatic(req, res, next) {
   }
 }
 
+async function streamTask(req, res, next) {
+  try {
+    const { prompt, model } = req.body;
+    console.log(`[CTRL] streamTask -> prompt: "${prompt}", model: ${model || 'default'}`);
+    if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+      return res.status(400).json({ error: 'A non-empty "prompt" field is required' });
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+
+    let aborted = false;
+    req.on('close', () => { aborted = true; });
+
+    const generator = gameService.streamGeneration(prompt.trim(), model);
+    for await (const chunk of generator) {
+      if (aborted) break;
+      res.write(`event: ${chunk.type}\ndata: ${JSON.stringify({ content: chunk.content })}\n\n`);
+    }
+
+    if (!aborted) {
+      res.write(`event: done\ndata: {}\n\n`);
+    }
+    res.end();
+  } catch (err) {
+    if (!res.headersSent) {
+      next(err);
+    } else {
+      res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
+      res.end();
+    }
+  }
+}
+
 module.exports = {
   submitTask,
   getTaskStatus,
@@ -96,4 +133,5 @@ module.exports = {
   getModels,
   iterateWithFeedback,
   iterateAutomatic,
+  streamTask,
 };

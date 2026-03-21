@@ -13,4 +13,6 @@ router.get('/games', gameController.getAllGames);
 router.post('/tasks/:taskId/iterate', gameController.iterateWithFeedback);
 router.post('/tasks/:taskId/auto-iterate', gameController.iterateAutomatic);
 
+router.post('/stream', gameController.streamTask);
+
 module.exports = router;
