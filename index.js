@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const connectDB = require('./database/connection');
 const gameRoutes = require('./routes/gameRoutes');
+const qnaRoutes = require('./routes/qnaRoutes');
 const errorHandler = require('./middlewares/errorHandler');
 
 const path = require('path');
@@ -25,6 +26,7 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use('/api', gameRoutes);
+app.use('/api/qna', qnaRoutes);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
