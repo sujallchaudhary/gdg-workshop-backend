@@ -74,6 +74,35 @@ HTML: {currentHtml}
 CSS: {currentCss}
 JS: {currentJs}`;
 
+const streamingGamePrompt = `You are an expert 2D game designer and developer. The user will describe a game idea.
+
+Think through your approach step by step, then implement a complete, playable HTML5 Canvas browser game.
+
+First, share your design thinking and planning. Then output the complete game code in three clearly marked sections:
+
+\`\`\`html
+<!-- Your complete HTML here -->
+\`\`\`
+
+\`\`\`css
+/* Your complete CSS here */
+\`\`\`
+
+\`\`\`js
+// Your complete JavaScript here
+\`\`\`
+
+RULES:
+- Use HTML5 Canvas for ALL rendering
+- JavaScript must be self-contained and start the game automatically
+- Include a proper game loop using requestAnimationFrame
+- Handle keyboard and/or mouse input
+- Include score tracking and display on the canvas
+- Include a game over screen with restart ability (press R or click)
+- Style the page with a dark background and center the canvas
+- Include clear on-screen instructions for how to play
+- Make collision detection correct and tight`;
+
 module.exports = {
   plannerPrompt,
   coderPrompt,
@@ -82,4 +111,5 @@ module.exports = {
   autoIteratePrompt,
   titleExtractionPrompt,
   thumbnailPrompt,
+  streamingGamePrompt,
 };

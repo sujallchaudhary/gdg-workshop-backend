@@ -6,6 +6,7 @@ const {
   generateThumbnail,
   iterateGameWithFeedback,
   iterateGameAuto,
+  streamGameGeneration,
   AVAILABLE_MODELS,
 } = require('../chains/gameChain');
 
@@ -197,6 +198,12 @@ async function iterateAutomatic(taskId, modelId) {
   }
 }
 
+async function* streamGeneration(prompt, modelId) {
+  const model = resolveModel(modelId);
+  console.log(`[SVC] streamGeneration -> model: ${model}, prompt: "${prompt}"`);
+  yield* streamGameGeneration(prompt, model);
+}
+
 module.exports = {
   createTask,
   getTaskStatus,
@@ -204,4 +211,5 @@ module.exports = {
   getAvailableModels,
   iterateWithFeedback,
   iterateAutomatic,
+  streamGeneration,
 };
